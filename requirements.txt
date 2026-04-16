@@ -1,0 +1,10 @@
+aiohttp
+asyncpg
+beautifulsoup4
+pandas
+openpyxl
+xlrd
+pdfminer.six
+pdfplumber
+pydantic
+python-dotenv
