@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urljoin, urlparse
@@ -20,10 +21,14 @@ class AsyncBulletinDownloader:
         self.settings = settings
         self.semaphore = asyncio.Semaphore(settings.concurrency_limit)
 
-    async def collect_bulletin_links(self, pages: int = 1) -> list[BulletinLink]:
+    async def collect_bulletin_links(self, pages: int | None = None) -> list[BulletinLink]:
         timeout = aiohttp.ClientTimeout(total=self.settings.request_timeout_seconds)
         connector = aiohttp.TCPConnector(limit=self.settings.concurrency_limit * 2)
         async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+            if pages is None:
+                pages = await self._detect_total_pages(session)
+                logger.info("Определено страниц пагинации: %s", pages)
+
             tasks = [
                 self._parse_links_from_page(session=session, page_number=page_number)
                 for page_number in range(1, pages + 1)
@@ -37,9 +42,13 @@ class AsyncBulletinDownloader:
                 continue
             links.extend(links_or_exc)
 
-        unique = {(str(link.url), link.title): link for link in links}
-        logger.info("Собрано %s уникальных ссылок на бюллетени", len(unique))
-        return list(unique.values())
+        unique_by_file_name: dict[str, BulletinLink] = {}
+        for link in links:
+            file_name = self._resolve_filename(link.url.path)
+            unique_by_file_name[file_name] = link
+
+        logger.info("Собрано %s уникальных ссылок на бюллетени", len(unique_by_file_name))
+        return list(unique_by_file_name.values())
 
     async def download_files(self, links: Iterable[BulletinLink], limit: int | None = None) -> list[Path]:
         selected_links = list(links)
@@ -99,6 +108,23 @@ class AsyncBulletinDownloader:
         logger.info("Страница %s: найдено %s ссылок", page_number, len(parsed_links))
         return parsed_links
 
+    async def _detect_total_pages(self, session: aiohttp.ClientSession) -> int:
+        page_url = self._build_page_url(1)
+        html = await self._fetch_text(session=session, url=page_url)
+        soup = BeautifulSoup(html, "html.parser")
+
+        pagination_block = soup.select_one("div.bx-pagination-container")
+        if not pagination_block:
+            return 1
+
+        max_page = 1
+        for link in pagination_block.select("a[href]"):
+            href = link.get("href", "")
+            match = re.search(r"page=page-(\d+)", href)
+            if match:
+                max_page = max(max_page, int(match.group(1)))
+        return max_page
+
     async def _download_one(
         self,
         session: aiohttp.ClientSession,
@@ -153,7 +179,7 @@ class AsyncBulletinDownloader:
         base = urljoin(self.settings.base_url, self.settings.results_path)
         if page_number == 1:
             return base
-        return f"{base}?PAGEN_1={page_number}"
+        return f"{base}?page=page-{page_number}"
 
     @staticmethod
     def _resolve_filename(path: str) -> str:

@@ -8,3 +8,4 @@ pdfminer.six
 pdfplumber
 pydantic
 python-dotenv
+SQLAlchemy

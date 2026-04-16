@@ -19,3 +19,11 @@ class ParsedTradeRecord(BaseModel):
     parsed_at: datetime
     record_count: int = Field(ge=0)
     sample_text: str = Field(default="")
+
+
+class TradeRow(BaseModel):
+    instrument_code: str = Field(min_length=1)
+    instrument_name: str = Field(min_length=1)
+    source_file: str
+    bulletin_url: HttpUrl | None = None
+    trade_date: datetime | None = None
