@@ -29,6 +29,13 @@ class Settings:
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    @property
+    def postgres_dsn_psycopg(self) -> str:
+        return (
+            f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
 
 def _get_env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
